@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cafe PWA - Masalar</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+<script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+
+
+<style>
+  /* Loader */
+  #loader {
+    position: fixed; top:0; left:0; width:100%; height:4px;
+    background:#eee; z-index:1055;
+  }
+  #loader-bar {
+    width:0%; height:100%; background:orange; transition: width 0.3s;
+  }
+
+  .card { min-height: 100px; display:flex; flex-direction:column; justify-content:center; }
+  .masa-card:hover { transform: scale(1.02); transition: 0.2s; cursor:pointer; }
+  .urun-card:hover { transform: scale(1.03); transition:0.2s; cursor:pointer; }
+  .fiş { font-family: monospace; white-space: pre; }
+
+  /* Dark Mode */
+  body.dark-mode { background:#121212; color:#eee; }
+  body.dark-mode .card { background:#1e1e1e; color:#eee; }
+  body.dark-mode .table { color:#eee; }
+  body.dark-mode .modal-content { background:#1e1e1e; color:#eee; }
+  .dark-mode-toggle { position:fixed; top:10px; right:10px; z-index:1100; }
+
+  /* Mobilde darkmode buton gizle */
+  @media (max-width: 768px) {
+    .dark-mode-toggle { display:none; }
+  }
+</style>
+</head>
+<body class="bg-light">
+
+<!-- Loader -->
+<div id="loader"><div id="loader-bar"></div></div>
+
+<!-- Dark Mode Toggle -->
+<button class="btn btn-warning dark-mode-toggle" onclick="toggleDarkMode()">🌙</button>
+
+<div class="container mt-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2>🍽️ Masalar</h2>
+    <div class="dropdown">
+      <button class="btn btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">Ayarlar</button>
+      <ul class="dropdown-menu dropdown-menu-dark">
+        <li><button class="dropdown-item" onclick="showAdminModal()">Masa Menüsü</button></li>
+        <li><button class="dropdown-item" onclick="showCiroModal()">Ciro</button></li>
+        <li><button class="dropdown-item" onclick="showOdemeGecmis()">Ödeme Geçmişi</button></li>
+        <li><button class="dropdown-item" onclick="urunEkle()">Ürün Ekle</button></li>
+        <li>
+  <button onclick="barkodModalAc()" class="dropdown-item bd-highlight">📷 Barkodla Ürün Ekle</button>
+</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Masalar Tabs -->
+  <ul class="nav nav-tabs mb-3" id="masaTabs">
+    <li class="nav-item"><a class="nav-link active" data-filter="all" href="#">Tüm Masalar</a></li>
+    <li class="nav-item"><a class="nav-link" data-filter="dolu" href="#">Dolu Masalar</a></li>
+    <li class="nav-item"><a class="nav-link" data-filter="bos" href="#">Boş Masalar</a></li>
+  </ul>
+
+  <div class="row g-3" id="masaListesi"></div>
+</div>
+
+<!-- Masa Modal -->
+<div class="modal fade" id="masaModal" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="masaBaslik">Masa</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3" id="urunKartListesi"></div>
+        <div class="table-responsive mt-3">
+          <table class="table table-striped text-center" id="masaUrunListesi">
+            <thead><tr><th>Ürün</th><th>Fiyat</th><th>Adet</th><th>Sil</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="text-end fw-bold fs-5 mt-3">Toplam: <span id="masaToplam">0</span> ₺</div>
+      </div>
+      <div class="modal-footer" id="odemeBolumu">
+        <select class="form-select w-auto" id="odemeTuru">
+          <option value="nakit">💵 Nakit</option>
+          <option value="kart">💳 Kart</option>
+        </select>
+        <button class="btn btn-success" id="hesapOdeBtn">Ödendi</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Admin Modal -->
+<div class="modal fade" id="adminModal" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Masa ve Ürün Yönetimi</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="masaForm" class="d-flex gap-2 mb-3">
+          <input type="text" id="masaAdi" class="form-control" placeholder="Masa Adı" required>
+          <button type="submit" class="btn btn-primary">Masa Ekle</button>
+        </form>
+        <div id="masaListesiAdmin" class="mb-4"></div>
+
+        <div id="urunListesiAdmin" class="mb-4"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Ciro Modal -->
+<div class="modal fade" id="ciroModal" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+      <div class="modal-header"><h5>Ciro</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <div class="row g-3 mb-3">
+          <div class="col-md-6">
+            <div class="card text-white bg-success shadow-sm p-3">
+              <h6>💵 Toplam Nakit</h6><h3 id="toplamNakit">₺</h3>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="card text-white bg-primary shadow-sm p-3">
+              <h6>💳 Toplam Kart</h6><h3 id="toplamKart">₺</h3>
+            </div>
+          </div>
+          <div class="text-center mt-3">
+  <button class="btn btn-warning" onclick="gunSonuAl()">📅 Gün Sonu Al</button>
+</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Ödeme Geçmişi -->
+<div class="modal fade" id="odemeGecmis" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+      <div class="modal-header"><h5>Ödeme Geçmişi</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <div class="card shadow-sm p-3" style="max-height:350px; overflow-y:auto;">
+          <h6 class="fw-bold mb-2">📋 Ödeme Geçmişi</h6>
+          <ul id="odemeGecmisiList" class="list-group list-group-flush"></ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="urunEkle" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+      <div class="modal-header"><h5>Ürün Ekle</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <form id="urunForm" class="d-flex gap-2 mb-3">
+          <input type="text" id="urunAdi" class="form-control" placeholder="Ürün Adı" required>
+          <input type="number" id="urunFiyat" class="form-control" placeholder="Fiyat" required>
+          <button type="submit" class="btn btn-success">Ürün Ekle</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- Barkod Modal -->
+<div class="modal fade" id="barkodModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content bg-dark text-white">
+      <div class="modal-header">
+        <h5 class="modal-title">📷 Barkod Okuyucu</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body text-center">
+        <div id="reader" style="width: 100%;"></div>
+        <p class="mt-3" id="barkodSonuc" class="fw-bold"></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyCwpKUpII22XkWRIf_3UehUYUyZQfGD90Y",
+  authDomain: "adisyon-f9ea2.firebaseapp.com",
+  projectId: "adisyon-f9ea2",
+  storageBucket: "adisyon-f9ea2.appspot.com",
+  messagingSenderId: "1024510526279",
+  appId: "1:1024510526279:web:07193ebf6ec6f6e79d0262"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+let aktifMasa = null;
+let aktifFilter = "all";
+
+// Loader
+function showLoader(){ document.getElementById("loader-bar").style.width="30%"; }
+function hideLoader(){ document.getElementById("loader-bar").style.width="100%"; setTimeout(()=>{document.getElementById("loader-bar").style.width="0%";},300); }
+
+async function masalariGetir(){
+  showLoader();
+  try{
+    const snap = await db.collection("masalar").get();
+    hideLoader();
+    return snap.docs.map(doc=>({id:doc.id,...doc.data()}));
+  }catch(err){ console.log("Masalar yüklenemedi:", err); hideLoader(); return []; }
+}
+
+async function urunleriGetir(){
+  showLoader();
+  try{
+    const snap = await db.collection("urunler").get();
+    hideLoader();
+    return snap.docs.map(doc=>doc.data());
+  }catch(err){ console.log("Ürünler yüklenemedi:", err); hideLoader(); return []; }
+}
+
+async function renderMasalar(){
+  const masalar = await masalariGetir();
+  const masaListesi = document.getElementById("masaListesi");
+  masaListesi.innerHTML="";
+  masalar.forEach(async m=>{
+    const snap = await db.collection("masalar").doc(m.id).collection("siparisler").get();
+    const dolu = snap.size>0;
+    if(aktifFilter=="dolu" && !dolu) return;
+    if(aktifFilter=="bos" && dolu) return;
+    const card = document.createElement("div");
+    card.className="col-6 col-sm-4 col-md-3 col-lg-2";
+    card.innerHTML=`<div class="card p-4 text-center shadow-sm masa-card">${m.ad}</div>`;
+    card.addEventListener("click", ()=>masaAc(m.id,m.ad));
+    masaListesi.appendChild(card);
+  });
+}
+
+document.getElementById("urunForm").addEventListener("submit", async (e)=>{
+  e.preventDefault();
+  const ad = document.getElementById("urunAdi").value.trim();
+  const fiyat = parseFloat(document.getElementById("urunFiyat").value);
+  if(!ad || isNaN(fiyat)) return Swal.fire("Hata","Geçerli bir ürün adı ve fiyat gir!","error");
+  await db.collection("urunler").add({ad,fiyat});
+  Swal.fire("Başarılı","Ürün eklendi!","success");
+  document.getElementById("urunAdi").value="";
+  document.getElementById("urunFiyat").value="";
+  renderUrunler();
+});
+
+document.querySelectorAll("#masaTabs a").forEach(tab=>{
+  tab.addEventListener("click", e=>{
+    e.preventDefault();
+    aktifFilter=tab.dataset.filter;
+    document.querySelectorAll("#masaTabs a").forEach(a=>a.classList.remove("active"));
+    tab.classList.add("active");
+    renderMasalar();
+  });
+});
+
+function toggleDarkMode(){ document.body.classList.toggle("dark-mode"); }
+
+async function renderUrunler(){
+  const urunKartListesi=document.getElementById("urunKartListesi");
+  urunKartListesi.innerHTML="";
+  const urunler=await urunleriGetir();
+  urunler.forEach(u=>{
+    const card=document.createElement("div");
+    card.className="col-12 col-sm-6 col-md-4 col-lg-3 mb-2";
+    card.innerHTML=`<div class="card shadow-sm p-3 text-center urun-card"><h5>${u.ad}</h5><div class="fw-bold">${u.fiyat} ₺</div></div>`;
+    card.addEventListener("click",async ()=>{
+      const sipSnap=await db.collection("masalar").doc(aktifMasa).collection("siparisler").where("ad","==",u.ad).get();
+      if(sipSnap.size>0){
+        const docId=sipSnap.docs[0].id;
+        const adet=sipSnap.docs[0].data().adet?sipSnap.docs[0].data().adet+1:2;
+        await db.collection("masalar").doc(aktifMasa).collection("siparisler").doc(docId).update({adet});
+      }else{
+        await db.collection("masalar").doc(aktifMasa).collection("siparisler").add({...u,adet:1});
+      }
+      const snapshot=await db.collection("masalar").doc(aktifMasa).collection("siparisler").get();
+      renderMasaUrun(snapshot.docs.map(d=>d.data()));
+      renderMasalar();
+    });
+    urunKartListesi.appendChild(card);
+  });
+}
+
+async function masaAc(id,ad){
+  aktifMasa=id;
+  document.getElementById("masaBaslik").innerText=ad;
+  renderUrunler();
+  const snapshot=await db.collection("masalar").doc(id).collection("siparisler").get();
+  renderMasaUrun(snapshot.docs.map(d=>d.data()));
+  new bootstrap.Modal(document.getElementById('masaModal')).show();
+}
+
+function renderMasaUrun(adisyon){
+  const tbody=document.querySelector("#masaUrunListesi tbody");
+  const masaToplam=document.getElementById("masaToplam");
+  const odemeBolumu=document.getElementById("odemeBolumu");
+
+  tbody.innerHTML="";
+  let toplam=0;
+
+  adisyon.forEach((u,i)=>{
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td>${u.ad}</td><td>${u.fiyat} ₺</td><td>${u.adet||1}</td><td><button class="btn btn-danger w-50" onclick="urunCikar(${i})">Sil</button></td>`;
+    tbody.appendChild(tr);
+    toplam+=u.fiyat*(u.adet||1);
+  });
+
+  masaToplam.innerText=toplam.toFixed(2);
+
+  // 🔥 ürün yoksa ödeme kısmını gizle
+  if(adisyon.length===0){
+    odemeBolumu.style.display="none";
+  }else{
+    odemeBolumu.style.display="flex";
+    odemeBolumu.classList.add("gap-2","justify-content-end");
+  }
+}
+
+window.urunCikar=async function(i){
+  const snapshot=await db.collection("masalar").doc(aktifMasa).collection("siparisler").get();
+  const docs=snapshot.docs;
+  if(docs[i]){
+    await db.collection("masalar").doc(aktifMasa).collection("siparisler").doc(docs[i].id).delete();
+    const yeniDocs=docs.filter((_,idx)=>idx!==i);
+    renderMasaUrun(yeniDocs.map(d=>d.data()));
+  }
+}
+
+document.getElementById("hesapOdeBtn").addEventListener("click",async ()=>{
+  const odemeTuru=document.getElementById("odemeTuru").value;
+  const snapshot=await db.collection("masalar").doc(aktifMasa).collection("siparisler").get();
+  const adisyon=snapshot.docs.map(d=>d.data());
+  if(adisyon.length===0){ Swal.fire("Uyarı","Ürün yok, ödeme alınamaz!","warning"); return; }
+  let toplam=adisyon.reduce((a,c)=>a+(c.fiyat*(c.adet||1)),0);
+  await db.collection("odemeGecmisi").add({masa:document.getElementById("masaBaslik").innerText,tur:odemeTuru,tutar:toplam,tarih:new Date().toISOString()});
+  for(const doc of snapshot.docs){ await db.collection("masalar").doc(aktifMasa).collection("siparisler").doc(doc.id).delete(); }
+  renderMasaUrun([]);
+  renderMasalar();
+  Swal.fire("Başarılı","Ödeme alındı!","success");
+  bootstrap.Modal.getInstance(document.getElementById('masaModal')).hide();
+});
+
+async function guncelCiro(){
+  const snap=await db.collection("odemeGecmisi").get();
+  let nakit=0,kart=0; const listHtml=[];
+  snap.forEach(doc=>{
+    const o=doc.data();
+    if(o.tur==="nakit") nakit+=o.tutar; else kart+=o.tutar;
+    listHtml.push(`<li class="list-group-item">${new Date(o.tarih).toLocaleString()} - ${o.masa} - ${o.tutar.toFixed(2)}₺ - ${o.tur.toUpperCase()}</li>`);
+  });
+  document.getElementById("toplamNakit").innerText=nakit.toFixed(2);
+  document.getElementById("toplamKart").innerText=kart.toFixed(2);
+  document.getElementById("odemeGecmisiList").innerHTML=listHtml.join("");
+}
+  async function gunSonuAl() {
+    try {
+      const snap = await db.collection("odemeGecmisi").get();
+      if (snap.empty) {
+        Swal.fire({
+          icon: "info",
+          title: "Kayıt Yok!",
+          text: "Bugün için ödeme kaydı bulunamadı.",
+          confirmButtonText: "Tamam"
+        });
+        return;
+      }
+
+      let toplamNakit = 0, toplamKart = 0;
+      const odemeler = [];
+
+      snap.forEach(doc => {
+        const data = doc.data();
+        odemeler.push(data);
+        if (data.tur === "nakit") toplamNakit += data.tutar;
+        else if (data.tur === "kart") toplamKart += data.tutar;
+      });
+
+      const toplam = toplamNakit + toplamKart;
+      const tarih = new Date().toLocaleDateString('tr-TR');
+
+      const result = await Swal.fire({
+        title: "📅 Gün Sonu Raporu",
+        html: `
+          <div style="text-align:left">
+            <p><b>Tarih:</b> ${tarih}</p>
+            <p>💵 <b>Nakit:</b> ${toplamNakit.toFixed(2)} ₺</p>
+            <p>💳 <b>Kart:</b> ${toplamKart.toFixed(2)} ₺</p>
+            <p>💰 <b>Toplam:</b> ${toplam.toFixed(2)} ₺</p>
+          </div>
+        `,
+        showCancelButton: true,
+        confirmButtonText: "Arşivle ve Sıfırla",
+        cancelButtonText: "İptal",
+        icon: "info"
+      });
+
+      if (result.isConfirmed) {
+        // Gün sonu arşivle
+        await db.collection("gunSonuRaporlari").add({
+          tarih: new Date(),
+          toplamNakit,
+          toplamKart,
+          toplam,
+          odemeler
+        });
+
+        // Eski ödemeleri sil
+        const batch = db.batch();
+        snap.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+
+        Swal.fire({
+          icon: "success",
+          title: "Gün Sonu Tamamlandı!",
+          text: "Tüm ödemeler arşivlendi ve sıfırlandı.",
+          confirmButtonText: "Tamam"
+        });
+
+        window.guncelCiro(); // ciroyu yenile
+      }
+
+    } catch (err) {
+      console.error("Gün sonu hatası:", err);
+      Swal.fire({
+        icon: "error",
+        title: "Hata!",
+        text: "Gün sonu alınırken bir sorun oluştu.",
+        confirmButtonText: "Tamam"
+      });
+    }
+  }
+
+  let html5QrCode;
+
+function barkodModalAc() {
+  const modal = new bootstrap.Modal(document.getElementById('barkodModal'));
+  modal.show();
+
+  const qrDiv = document.getElementById("reader");
+  qrDiv.innerHTML = ""; // Önceki taramayı temizle
+
+  html5QrCode = new Html5Qrcode("reader");
+
+  html5QrCode.start(
+    { facingMode: "environment" }, // Arka kamera
+    { fps: 10, qrbox: 250 },
+    (decodedText) => {
+      document.getElementById("barkodSonuc").innerText = "Barkod: " + decodedText;
+      barkodlaUrunEkle(decodedText);
+      html5QrCode.stop();
+      modal.hide();
+    },
+    (errorMessage) => {
+      console.log("Barkod okunamadı:", errorMessage);
+    }
+  ).catch(err => console.error("Kamera başlatılamadı:", err));
+}
+
+async function barkodModalAc() {
+  const modal = new bootstrap.Modal(document.getElementById('barkodModal'));
+  modal.show();
+
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const cams = devices.filter(d => d.kind === "videoinput");
+
+  if (cams.length === 0) {
+    Swal.fire("Kamera Bulunamadı", "Bu cihazda kamera tespit edilemedi.", "error");
+    modal.hide();
+    return;
+  }
+
+  html5QrCode = new Html5Qrcode("reader");
+
+  html5QrCode.start(
+    { facingMode: "environment" },
+    { fps: 10, qrbox: 250 },
+    (decodedText) => {
+      document.getElementById("barkodSonuc").innerText = "Barkod: " + decodedText;
+      barkodlaUrunEkle(decodedText);
+      html5QrCode.stop();
+      modal.hide();
+    },
+    (errorMessage) => console.log("Barkod okunamadı:", errorMessage)
+  ).catch(err => {
+    console.error("Kamera başlatılamadı:", err);
+    Swal.fire("Kamera Açılamadı", "Lütfen kamera izni verin veya başka cihazda deneyin.", "error");
+    modal.hide();
+  });
+}
+
+
+function showAdminModal(){ new bootstrap.Modal(document.getElementById('adminModal')).show(); }
+function showCiroModal(){ guncelCiro(); new bootstrap.Modal(document.getElementById('ciroModal')).show(); }
+function showOdemeGecmis(){ guncelCiro(); new bootstrap.Modal(document.getElementById('odemeGecmis')).show(); }
+function urunEkle(){ new bootstrap.Modal(document.getElementById('urunEkle')).show(); }
+
+renderMasalar();
+</script>
+
+</body>
+</html>

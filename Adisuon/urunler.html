@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ürün Yönetimi</title>
+  <link 
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" 
+    rel="stylesheet">
+  <script 
+    src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js">
+  </script>
+</head>
+<body class="bg-light">
+
+  <div class="container mt-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h2>🛒 Ürün Yönetimi</h2>
+      <a href="main.html" class="btn btn-secondary">⬅️ Ana Sayfa</a>
+    </div>
+
+    <!-- Ürün ekleme formu -->
+    <div class="card p-4 mb-4 shadow-sm">
+      <h5>Yeni Ürün Ekle</h5>
+      <form id="urunForm">
+        <div class="row g-3 mt-2">
+          <div class="col-md-4">
+            <input type="text" id="urunAdi" class="form-control" placeholder="Ürün Adı" required>
+          </div>
+          <div class="col-md-4">
+            <input type="number" id="urunFiyati" class="form-control" placeholder="Fiyat (₺)" required>
+          </div>
+          <div class="col-md-4">
+            <input type="text" id="urunBarkod" class="form-control" placeholder="Barkod (isteğe bağlı)">
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary mt-3 w-100">💾 Ürünü Kaydet</button>
+      </form>
+    </div>
+
+    <!-- Ürün listesi -->
+    <div class="card p-4 shadow-sm">
+      <h5>📋 Kayıtlı Ürünler</h5>
+      <table class="table mt-3 table-striped" id="urunListesi">
+        <thead>
+          <tr>
+            <th>Ürün Adı</th>
+            <th>Fiyat</th>
+            <th>Barkod</th>
+            <th>Sil</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
